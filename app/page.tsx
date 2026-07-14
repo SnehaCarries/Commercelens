@@ -1,18 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, MouseEvent } from "react";
 import {
   ArrowRight,
   BadgePercent,
+  Bot,
+  ChevronUp,
   CreditCard,
+  GitCompareArrows,
   Heart,
   Menu,
+  MessageCircle,
+  Mic,
   Minus,
   Moon,
   Package,
   Plus,
   Search,
+  Send,
   ShoppingBag,
   SlidersHorizontal,
   Sparkles,
@@ -36,11 +42,21 @@ type Product = {
 };
 
 type CartItem = Product & { quantity: number };
-type SortOption = "featured" | "priceLowHigh" | "priceHighLow";
+type SortOption =
+  | "featured"
+  | "priceLowHigh"
+  | "priceHighLow"
+  | "popularity"
+  | "newest";
+type PriceFilter = "all" | "under25" | "25to50" | "50to100" | "over100";
+type RatingFilter = "all" | "4.5" | "4.7" | "4.8";
+type DashboardRange = "7d" | "30d" | "90d";
 type AppView =
   | "shop"
   | "login"
   | "checkout"
+  | "profile"
+  | "dashboard"
   | "orders"
   | "payments"
   | "wishlist"
@@ -49,6 +65,9 @@ type AppView =
 type Customer = {
   name: string;
   email: string;
+  phone: string;
+  address: string;
+  city: string;
 };
 
 type PaymentMethod = {
@@ -56,6 +75,24 @@ type PaymentMethod = {
   label: string;
   detail: string;
   default: boolean;
+};
+
+type CategoryCard = {
+  label: string;
+  description: string;
+  category: string;
+  query: string;
+  image: string;
+};
+
+type ToastMessage = {
+  id: number;
+  message: string;
+};
+
+type ChatMessage = {
+  sender: "bot" | "user";
+  text: string;
 };
 
 type Order = {
@@ -1258,6 +1295,48 @@ const products: Product[] = [
 ];
 
 const categories = ["All", "Fashion", "Beauty", "Electronics", "Home-Living"];
+const categoryCards: CategoryCard[] = [
+  {
+    label: "Men",
+    description: "Wallets, watches, shoes, and everyday tech",
+    category: "All",
+    query: "men",
+    image:
+      "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    label: "Women",
+    description: "Bags, jewelry, beauty, clothes, and hair pieces",
+    category: "All",
+    query: "women",
+    image:
+      "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    label: "Electronics",
+    description: "Audio, charging, wearables, and computer accessories",
+    category: "Electronics",
+    query: "",
+    image:
+      "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    label: "Beauty",
+    description: "Hair clips, scrunchies, barrettes, and styling picks",
+    category: "Beauty",
+    query: "",
+    image:
+      "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    label: "Home",
+    description: "Furniture, lighting, storage, and decor",
+    category: "Home-Living",
+    query: "",
+    image:
+      "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=900&q=80"
+  }
+];
 const subcategoriesByCategory: Record<string, string[]> = {
   Bags: [
     "All Bags",
@@ -1369,6 +1448,34 @@ function displayCategory(product: Product) {
   return "Fashion";
 }
 
+function productBrand(product: Product) {
+  if (product.category === "Electronics") {
+    return "NovaTech";
+  }
+
+  if (product.category === "Furniture") {
+    return "Haven Home";
+  }
+
+  if (product.category === "Hair Accessories") {
+    return "Glow Edit";
+  }
+
+  if (product.category === "Jewelry") {
+    return "Lumiere";
+  }
+
+  if (product.category === "Footwear") {
+    return "Stride Co.";
+  }
+
+  if (product.category === "Clothes") {
+    return "Mode Studio";
+  }
+
+  return "Sneha Carries";
+}
+
 function baseReviewCount(product: Product) {
   return Math.round(product.rating * 38 + product.id);
 }
@@ -1394,8 +1501,56 @@ function salePrice(product: Product) {
   return Number((product.price * (1 - productDiscountRate(product))).toFixed(2));
 }
 
+function matchesPriceFilter(product: Product, filter: PriceFilter) {
+  const price = salePrice(product);
+
+  if (filter === "under25") {
+    return price < 25;
+  }
+
+  if (filter === "25to50") {
+    return price >= 25 && price <= 50;
+  }
+
+  if (filter === "50to100") {
+    return price > 50 && price <= 100;
+  }
+
+  if (filter === "over100") {
+    return price > 100;
+  }
+
+  return true;
+}
+
 function offerLabel(product: Product) {
   return `${Math.round(productDiscountRate(product) * 100)}% off`;
+}
+
+function searchKeywords(product: Product) {
+  const keywords: string[] = [];
+
+  if (["Accessories", "Clothes", "Electronics", "Footwear"].includes(product.category)) {
+    keywords.push("men");
+  }
+
+  if (
+    ["Bags", "Clothes", "Footwear", "Hair Accessories", "Jewelry", "Style"].includes(
+      product.category
+    )
+  ) {
+    keywords.push("women");
+  }
+
+  if (product.category === "Hair Accessories") {
+    keywords.push("beauty");
+  }
+
+  if (product.category === "Furniture") {
+    keywords.push("home");
+  }
+
+  return keywords.join(" ");
 }
 
 function usageImages(product: Product) {
@@ -1455,16 +1610,47 @@ function usageImages(product: Product) {
   return [product.image, ...(categoryImages[product.category] ?? categoryImages.Accessories)];
 }
 
+function deliveryEstimate(date = new Date()) {
+  const earliest = new Date(date);
+  const latest = new Date(date);
+  earliest.setDate(earliest.getDate() + 3);
+  latest.setDate(latest.getDate() + 6);
+
+  return `${earliest.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric"
+  })} - ${latest.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric"
+  })}`;
+}
+
 export default function Home() {
   const [currentView, setCurrentView] = useState<AppView>("shop");
   const [activeCategory, setActiveCategory] = useState("All");
   const [activeSubcategory, setActiveSubcategory] = useState("All");
   const [sortOption, setSortOption] = useState<SortOption>("featured");
+  const [priceFilter, setPriceFilter] = useState<PriceFilter>("all");
+  const [ratingFilter, setRatingFilter] = useState<RatingFilter>("all");
+  const [brandFilter, setBrandFilter] = useState("All");
   const [query, setQuery] = useState("");
   const [cartOpen, setCartOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [wishlist, setWishlist] = useState<number[]>([]);
+  const [compareIds, setCompareIds] = useState<number[]>([]);
+  const [recentlyViewedIds, setRecentlyViewedIds] = useState<number[]>([]);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      sender: "bot",
+      text: "Hi, I can help with orders, coupons, delivery, returns, and product picks."
+    }
+  ]);
+  const [chatInput, setChatInput] = useState("");
   const [productQuantities, setProductQuantities] = useState<Record<number, number>>(
     {}
   );
@@ -1473,10 +1659,19 @@ export default function Home() {
   );
   const [couponCode, setCouponCode] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [imageZoomed, setImageZoomed] = useState(false);
+  const [zoomPosition, setZoomPosition] = useState("50% 50%");
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [authName, setAuthName] = useState("Sneha Customer");
   const [authEmail, setAuthEmail] = useState("customer@example.com");
+  const [profileName, setProfileName] = useState("Sneha Customer");
+  const [profileEmail, setProfileEmail] = useState("customer@example.com");
+  const [profilePhone, setProfilePhone] = useState("+1 555 010 1488");
+  const [profileAddress, setProfileAddress] = useState("42 Market Street");
+  const [profileCity, setProfileCity] = useState("San Francisco, CA");
+  const [dashboardRange, setDashboardRange] = useState<DashboardRange>("30d");
   const [orders, setOrders] = useState<Order[]>([
     {
       id: "SC-1048",
@@ -1509,7 +1704,7 @@ export default function Home() {
       default: false
     }
   ]);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [themeAnimating, setThemeAnimating] = useState(false);
   const [flashSaleSecondsLeft, setFlashSaleSecondsLeft] = useState(8 * 60 * 60);
 
@@ -1532,6 +1727,12 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIsLoadingProducts(false), 700);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const filteredProducts = useMemo(() => {
     const categorySubcategories = subcategoriesByCategory[activeCategory];
     const allSubcategory = categorySubcategories?.[0];
@@ -1545,27 +1746,49 @@ export default function Home() {
           !categorySubcategories ||
           activeSubcategory === allSubcategory ||
           product.subcategory === activeSubcategory;
+        const priceMatch = matchesPriceFilter(product, priceFilter);
+        const ratingMatch =
+          ratingFilter === "all" || displayRating(product) >= Number(ratingFilter);
+        const brandMatch =
+          brandFilter === "All" || productBrand(product) === brandFilter;
         const searchableText = [
           product.name,
           displayCategory(product),
           product.category,
           product.subcategory,
-          product.tag
+          product.tag,
+          productBrand(product),
+          searchKeywords(product)
         ]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
         const queryMatch =
           normalizedQuery === "" || searchableText.includes(normalizedQuery);
-        return categoryMatch && subcategoryMatch && queryMatch;
+        return (
+          categoryMatch &&
+          subcategoryMatch &&
+          priceMatch &&
+          ratingMatch &&
+          brandMatch &&
+          queryMatch
+        );
       })
       .sort((a, b) => {
         if (sortOption === "priceLowHigh") {
-          return a.price - b.price;
+          return salePrice(a) - salePrice(b);
         }
 
         if (sortOption === "priceHighLow") {
-          return b.price - a.price;
+          return salePrice(b) - salePrice(a);
+        }
+
+        if (sortOption === "popularity") {
+          return purchaseCount(b) - purchaseCount(a);
+        }
+
+        if (sortOption === "newest") {
+          return b.id - a.id;
         }
 
         if (activeCategory !== "All") {
@@ -1574,7 +1797,16 @@ export default function Home() {
 
         return pricePriority(a) - pricePriority(b) || a.price - b.price;
       });
-  }, [activeCategory, activeSubcategory, query, sortOption]);
+  }, [
+    activeCategory,
+    activeSubcategory,
+    brandFilter,
+    priceFilter,
+    productRatings,
+    query,
+    ratingFilter,
+    sortOption
+  ]);
 
   const suggestedProducts = useMemo(() => {
     if (!selectedProduct) {
@@ -1614,6 +1846,73 @@ export default function Home() {
     []
   );
 
+  const trendingProducts = useMemo(
+    () =>
+      [...products]
+        .sort(
+          (a, b) =>
+            purchaseCount(b) - purchaseCount(a) ||
+            displayRating(b) - displayRating(a)
+        )
+        .slice(0, 8),
+    [productRatings]
+  );
+
+  const newArrivalProducts = useMemo(
+    () => [...products].sort((a, b) => b.id - a.id).slice(0, 8),
+    []
+  );
+
+  const brands = useMemo(
+    () => ["All", ...Array.from(new Set(products.map((product) => productBrand(product))))],
+    []
+  );
+
+  const compareProducts = useMemo(
+    () => products.filter((product) => compareIds.includes(product.id)),
+    [compareIds]
+  );
+
+  const recentlyViewedProducts = useMemo(
+    () => recentlyViewedIds
+      .map((id) => products.find((product) => product.id === id))
+      .filter((product): product is Product => Boolean(product)),
+    [recentlyViewedIds]
+  );
+
+  const aiRecommendedProducts = useMemo(() => {
+    const interestProducts = [
+      ...cart,
+      ...products.filter((product) => wishlist.includes(product.id)),
+      ...recentlyViewedProducts
+    ];
+    const interestCategories = new Set(interestProducts.map((product) => product.category));
+    const interestBrands = new Set(interestProducts.map((product) => productBrand(product)));
+
+    return [...products]
+      .filter(
+        (product) =>
+          !cart.some((item) => item.id === product.id) &&
+          !wishlist.includes(product.id)
+      )
+      .sort((a, b) => {
+        const score = (product: Product) =>
+          displayRating(product) * 20 +
+          purchaseCount(product) / 12 +
+          (interestCategories.has(product.category) ? 30 : 0) +
+          (interestBrands.has(productBrand(product)) ? 12 : 0) +
+          (recentlyViewedIds.includes(product.id) ? 10 : 0);
+
+        return score(b) - score(a);
+      })
+      .slice(0, 8);
+  }, [cart, productRatings, recentlyViewedIds, recentlyViewedProducts, wishlist]);
+
+  const selectedProductImages = selectedProduct ? usageImages(selectedProduct) : [];
+  const selectedProductImage =
+    selectedProductImages[selectedImageIndex] ?? selectedProduct?.image ?? "";
+  const estimatedDelivery = deliveryEstimate();
+
   const flashSaleHours = Math.floor(flashSaleSecondsLeft / 3600);
   const flashSaleMinutes = Math.floor((flashSaleSecondsLeft % 3600) / 60);
   const flashSaleSeconds = flashSaleSecondsLeft % 60;
@@ -1634,6 +1933,63 @@ export default function Home() {
   const shipping = discountedSubtotal >= 75 || discountedSubtotal === 0 ? 0 : 8;
   const tax = discountedSubtotal * 0.0825;
   const orderTotal = discountedSubtotal + shipping + tax;
+  const dashboardMultiplier =
+    dashboardRange === "7d" ? 0.35 : dashboardRange === "90d" ? 2.65 : 1;
+  const dashboardRevenue =
+    orders.reduce((total, order) => total + order.total, 0) * dashboardMultiplier +
+    orderTotal * 0.42;
+  const dashboardOrders = Math.max(1, Math.round(orders.length * dashboardMultiplier));
+  const dashboardConversion = Math.min(
+    18,
+    Number((6.2 + wishlist.length * 0.4 + cartCount * 0.25).toFixed(1))
+  );
+  const dashboardAverageOrder = dashboardRevenue / dashboardOrders;
+  const dashboardRevenueBars = [
+    { label: "Mon", value: 42 },
+    { label: "Tue", value: 64 },
+    { label: "Wed", value: 52 },
+    { label: "Thu", value: 78 },
+    { label: "Fri", value: 91 },
+    { label: "Sat", value: 86 },
+    { label: "Sun", value: 68 }
+  ].map((item) => ({
+    ...item,
+    value: Math.round(item.value * dashboardMultiplier)
+  }));
+  const dashboardMaxRevenue = Math.max(...dashboardRevenueBars.map((item) => item.value));
+  const dashboardTopCategories = useMemo(
+    () =>
+      Object.entries(
+        products.reduce<Record<string, number>>((totals, product) => {
+          const category = displayCategory(product);
+          totals[category] =
+            (totals[category] ?? 0) + purchaseCount(product) * salePrice(product);
+          return totals;
+        }, {})
+      )
+        .map(([label, value]) => ({
+          label,
+          value: Math.round(value * dashboardMultiplier)
+        }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5),
+    [dashboardMultiplier]
+  );
+  const dashboardCategoryMax = Math.max(
+    ...dashboardTopCategories.map((category) => category.value)
+  );
+  const dashboardTopProducts = useMemo(
+    () => [...products].sort((a, b) => purchaseCount(b) - purchaseCount(a)).slice(0, 5),
+    []
+  );
+
+  function showToast(message: string) {
+    const id = Date.now();
+    setToasts((current) => [...current, { id, message }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 2600);
+  }
 
   function addToCart(product: Product, quantity = 1) {
     const safeQuantity = Math.max(1, quantity);
@@ -1649,6 +2005,7 @@ export default function Home() {
       return [...current, { ...product, quantity: safeQuantity }];
     });
     setCartOpen(true);
+    showToast(`${product.name} added to cart`);
   }
 
   function selectedQuantity(productId: number) {
@@ -1663,11 +2020,39 @@ export default function Home() {
   }
 
   function toggleWishlist(productId: number) {
+    const product = products.find((item) => item.id === productId);
     setWishlist((current) =>
       current.includes(productId)
         ? current.filter((id) => id !== productId)
         : [...current, productId]
     );
+    if (product) {
+      showToast(
+        wishlist.includes(productId)
+          ? `${product.name} removed from wishlist`
+          : `${product.name} saved to wishlist`
+      );
+    }
+  }
+
+  function toggleCompare(productId: number) {
+    const product = products.find((item) => item.id === productId);
+    setCompareIds((current) => {
+      if (current.includes(productId)) {
+        return current.filter((id) => id !== productId);
+      }
+
+      if (current.length >= 3) {
+        showToast("Compare supports up to 3 products");
+        return current;
+      }
+
+      return [...current, productId];
+    });
+
+    if (product && !compareIds.includes(productId) && compareIds.length < 3) {
+      showToast(`${product.name} added to compare`);
+    }
   }
 
   function displayRating(product: Product) {
@@ -1711,7 +2096,130 @@ export default function Home() {
     setActiveCategory("All");
     setActiveSubcategory("All");
     setSortOption("featured");
+    setPriceFilter("all");
+    setRatingFilter("all");
+    setBrandFilter("All");
     setQuery("");
+  }
+
+  function selectCategoryCard(card: CategoryCard) {
+    setActiveCategory(card.category);
+    setActiveSubcategory(defaultSubcategory(card.category));
+    setSortOption("featured");
+    setPriceFilter("all");
+    setRatingFilter("all");
+    setBrandFilter("All");
+    setQuery(card.query);
+  }
+
+  function openProduct(product: Product) {
+    setSelectedProduct(product);
+    setSelectedImageIndex(0);
+    setImageZoomed(false);
+    setZoomPosition("50% 50%");
+    setRecentlyViewedIds((current) => [
+      product.id,
+      ...current.filter((id) => id !== product.id)
+    ].slice(0, 6));
+    setCurrentView("product");
+  }
+
+  function handleProductImageMove(event: MouseEvent<HTMLButtonElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - bounds.left) / bounds.width) * 100;
+    const y = ((event.clientY - bounds.top) / bounds.height) * 100;
+    setZoomPosition(`${x}% ${y}%`);
+  }
+
+  function startVoiceSearch() {
+    const SpeechRecognition =
+      (window as typeof window & {
+        SpeechRecognition?: new () => {
+          continuous: boolean;
+          interimResults: boolean;
+          lang: string;
+          start: () => void;
+          onresult: ((event: {
+            results: { [key: number]: { [key: number]: { transcript: string } } };
+          }) => void) | null;
+          onend: (() => void) | null;
+          onerror: (() => void) | null;
+        };
+        webkitSpeechRecognition?: new () => {
+          continuous: boolean;
+          interimResults: boolean;
+          lang: string;
+          start: () => void;
+          onresult: ((event: {
+            results: { [key: number]: { [key: number]: { transcript: string } } };
+          }) => void) | null;
+          onend: (() => void) | null;
+          onerror: (() => void) | null;
+        };
+      }).SpeechRecognition ||
+      (window as typeof window & {
+        webkitSpeechRecognition?: new () => {
+          continuous: boolean;
+          interimResults: boolean;
+          lang: string;
+          start: () => void;
+          onresult: ((event: {
+            results: { [key: number]: { [key: number]: { transcript: string } } };
+          }) => void) | null;
+          onend: (() => void) | null;
+          onerror: (() => void) | null;
+        };
+      }).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      showToast("Voice search is not available in this browser");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setQuery(transcript);
+      setCurrentView("shop");
+      window.location.hash = "shop";
+      showToast(`Searching for "${transcript}"`);
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => {
+      setIsListening(false);
+      showToast("Voice search could not hear that");
+    };
+    setIsListening(true);
+    recognition.start();
+  }
+
+  function sendChatMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const message = chatInput.trim();
+    if (!message) {
+      return;
+    }
+
+    const lower = message.toLowerCase();
+    const response = lower.includes("coupon") || lower.includes("promo")
+      ? "Try SAVE15 for 15% off or WELCOME10 for 10% off at checkout."
+      : lower.includes("delivery") || lower.includes("shipping")
+        ? `Orders over $75 ship free. Your estimated delivery window is ${estimatedDelivery}.`
+        : lower.includes("return")
+          ? "Returns are accepted within 30 days when items are unused and in original packaging."
+          : lower.includes("recommend")
+            ? "I recommend checking the AI picks section, which updates from your wishlist, cart, and recently viewed items."
+            : "I can help with coupons, delivery, returns, checkout, and product recommendations.";
+
+    setChatMessages((current) => [
+      ...current,
+      { sender: "user", text: message },
+      { sender: "bot", text: response }
+    ]);
+    setChatInput("");
   }
 
   function toggleTheme() {
@@ -1722,11 +2230,32 @@ export default function Home() {
 
   function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setCustomer({
+    const nextCustomer = {
       name: authName.trim() || "Sneha Customer",
-      email: authEmail.trim() || "customer@example.com"
-    });
-    setCurrentView("shop");
+      email: authEmail.trim() || "customer@example.com",
+      phone: profilePhone,
+      address: profileAddress,
+      city: profileCity
+    };
+    setCustomer(nextCustomer);
+    setProfileName(nextCustomer.name);
+    setProfileEmail(nextCustomer.email);
+    setCurrentView("profile");
+  }
+
+  function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextCustomer = {
+      name: profileName.trim() || "Sneha Customer",
+      email: profileEmail.trim() || "customer@example.com",
+      phone: profilePhone.trim() || "+1 555 010 1488",
+      address: profileAddress.trim() || "42 Market Street",
+      city: profileCity.trim() || "San Francisco, CA"
+    };
+    setCustomer(nextCustomer);
+    setAuthName(nextCustomer.name);
+    setAuthEmail(nextCustomer.email);
+    showToast("Profile updated");
   }
 
   function placeOrder(event: FormEvent<HTMLFormElement>) {
@@ -1761,6 +2290,8 @@ export default function Home() {
         </a>
         <nav className={menuOpen ? "nav nav-open" : "nav"}>
           <button onClick={() => setCurrentView("shop")}>Shop</button>
+          <button onClick={() => setCurrentView(customer ? "profile" : "login")}>Profile</button>
+          <button onClick={() => setCurrentView("dashboard")}>Dashboard</button>
           <button onClick={() => setCurrentView("wishlist")}>
             Wishlist ({wishlist.length})
           </button>
@@ -1773,7 +2304,7 @@ export default function Home() {
         <div className="header-actions">
           <button
             className="account-button"
-            onClick={() => setCurrentView(customer ? "orders" : "login")}
+            onClick={() => setCurrentView(customer ? "profile" : "login")}
           >
             <User size={17} />
             <span>{customer ? customer.name.split(" ")[0] : "Sign in"}</span>
@@ -1791,7 +2322,15 @@ export default function Home() {
               <Sun size={16} />
             </span>
           </button>
-          <button className="icon-button" data-tooltip="Search" aria-label="Search">
+          <button
+            className="icon-button"
+            data-tooltip="Search"
+            aria-label="Search"
+            onClick={() => {
+              setCurrentView("shop");
+              window.location.hash = "shop";
+            }}
+          >
             <Search size={19} />
           </button>
           <button
@@ -1873,6 +2412,264 @@ export default function Home() {
             </div>
           )}
 
+          {currentView === "profile" && (
+            <div className="profile-layout">
+              <section className="profile-hero">
+                <div className="profile-avatar" aria-hidden="true">
+                  {customer?.name?.charAt(0).toUpperCase() ?? "S"}
+                </div>
+                <div>
+                  <span>User profile</span>
+                  <h1>{customer?.name ?? "Sneha Customer"}</h1>
+                  <p>{customer?.email ?? "customer@example.com"}</p>
+                </div>
+              </section>
+
+              <section className="profile-stats" aria-label="Account overview">
+                <article>
+                  <Package size={20} />
+                  <span>Orders</span>
+                  <strong>{orders.length}</strong>
+                </article>
+                <article>
+                  <Heart size={20} />
+                  <span>Wishlist</span>
+                  <strong>{wishlist.length}</strong>
+                </article>
+                <article>
+                  <CreditCard size={20} />
+                  <span>Payments</span>
+                  <strong>{paymentMethods.length}</strong>
+                </article>
+                <article>
+                  <ShoppingBag size={20} />
+                  <span>Cart items</span>
+                  <strong>{cartCount}</strong>
+                </article>
+              </section>
+
+              <div className="profile-content">
+                <form className="profile-card" onSubmit={handleProfileSubmit}>
+                  <div className="section-heading">
+                    <span>Personal details</span>
+                    <h2>Manage your account information.</h2>
+                  </div>
+                  <div className="form-grid">
+                    <label>
+                      Full name
+                      <input
+                        value={profileName}
+                        onChange={(event) => setProfileName(event.target.value)}
+                        placeholder="Full name"
+                      />
+                    </label>
+                    <label>
+                      Email address
+                      <input
+                        type="email"
+                        value={profileEmail}
+                        onChange={(event) => setProfileEmail(event.target.value)}
+                        placeholder="Email address"
+                      />
+                    </label>
+                    <label>
+                      Phone
+                      <input
+                        value={profilePhone}
+                        onChange={(event) => setProfilePhone(event.target.value)}
+                        placeholder="Phone number"
+                      />
+                    </label>
+                    <label>
+                      City
+                      <input
+                        value={profileCity}
+                        onChange={(event) => setProfileCity(event.target.value)}
+                        placeholder="City"
+                      />
+                    </label>
+                    <label>
+                      Delivery address
+                      <input
+                        value={profileAddress}
+                        onChange={(event) => setProfileAddress(event.target.value)}
+                        placeholder="Street address"
+                      />
+                    </label>
+                  </div>
+                  <button className="wide-button">Save profile</button>
+                </form>
+
+                <aside className="profile-card profile-summary">
+                  <div className="section-heading">
+                    <span>Account shortcuts</span>
+                    <h2>Review saved activity.</h2>
+                  </div>
+                  <button onClick={() => setCurrentView("orders")}>
+                    <Package size={18} />
+                    View orders
+                  </button>
+                  <button onClick={() => setCurrentView("wishlist")}>
+                    <Heart size={18} />
+                    Open wishlist
+                  </button>
+                  <button onClick={() => setCurrentView("payments")}>
+                    <CreditCard size={18} />
+                    Payment methods
+                  </button>
+                  <div className="profile-delivery">
+                    <span>Default delivery</span>
+                    <strong>{profileAddress}</strong>
+                    <p>{profileCity}</p>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          )}
+
+          {currentView === "dashboard" && (
+            <div className="dashboard-layout">
+              <div className="dashboard-head">
+                <div className="section-heading">
+                  <span>Interactive dashboard</span>
+                  <h2>Track store activity and customer intent.</h2>
+                </div>
+                <div className="dashboard-controls" aria-label="Dashboard time range">
+                  {(["7d", "30d", "90d"] as DashboardRange[]).map((range) => (
+                    <button
+                      type="button"
+                      className={dashboardRange === range ? "active" : ""}
+                      onClick={() => setDashboardRange(range)}
+                      key={range}
+                    >
+                      {range === "7d" ? "7 days" : range === "30d" ? "30 days" : "90 days"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <section className="dashboard-kpis" aria-label="Dashboard metrics">
+                <article>
+                  <ShoppingBag size={20} />
+                  <span>Revenue</span>
+                  <strong>${dashboardRevenue.toFixed(0)}</strong>
+                  <em>Live cart included</em>
+                </article>
+                <article>
+                  <Package size={20} />
+                  <span>Orders</span>
+                  <strong>{dashboardOrders}</strong>
+                  <em>{orders[0]?.status ?? "No recent status"}</em>
+                </article>
+                <article>
+                  <BadgePercent size={20} />
+                  <span>Conversion</span>
+                  <strong>{dashboardConversion}%</strong>
+                  <em>{wishlist.length} saved products</em>
+                </article>
+                <article>
+                  <CreditCard size={20} />
+                  <span>Avg. order</span>
+                  <strong>${dashboardAverageOrder.toFixed(0)}</strong>
+                  <em>{paymentMethods.length} payment options</em>
+                </article>
+              </section>
+
+              <div className="dashboard-grid">
+                <section className="dashboard-panel revenue-panel">
+                  <div>
+                    <span>Revenue trend</span>
+                    <strong>{dashboardRange === "7d" ? "This week" : dashboardRange === "30d" ? "This month" : "This quarter"}</strong>
+                  </div>
+                  <div className="bar-chart" aria-label="Revenue by day">
+                    {dashboardRevenueBars.map((item) => (
+                      <button
+                        type="button"
+                        key={item.label}
+                        style={{ height: `${Math.max(18, (item.value / dashboardMaxRevenue) * 100)}%` }}
+                        onClick={() => showToast(`${item.label}: $${item.value * 18} revenue`)}
+                        aria-label={`${item.label} revenue`}
+                      >
+                        <span>${item.value * 18}</span>
+                        <em>{item.label}</em>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="dashboard-panel">
+                  <div>
+                    <span>Category performance</span>
+                    <strong>Top departments</strong>
+                  </div>
+                  <div className="category-bars">
+                    {dashboardTopCategories.map((category) => (
+                      <button
+                        type="button"
+                        key={category.label}
+                        onClick={() => {
+                          setActiveCategory(category.label);
+                          setCurrentView("shop");
+                          window.location.hash = "shop";
+                        }}
+                      >
+                        <span>{category.label}</span>
+                        <strong>${category.value.toLocaleString()}</strong>
+                        <i
+                          style={{
+                            width: `${Math.max(12, (category.value / dashboardCategoryMax) * 100)}%`
+                          }}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="dashboard-panel">
+                  <div>
+                    <span>Product signals</span>
+                    <strong>Most purchased</strong>
+                  </div>
+                  <div className="dashboard-products">
+                    {dashboardTopProducts.map((product, index) => (
+                      <button
+                        type="button"
+                        onClick={() => openProduct(product)}
+                        key={product.id}
+                      >
+                        <span>{index + 1}</span>
+                        <div>
+                          <strong>{product.name}</strong>
+                          <em>{purchaseCount(product)} purchases</em>
+                        </div>
+                        <Star size={16} fill="currentColor" />
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="dashboard-panel dashboard-actions">
+                  <div>
+                    <span>Quick actions</span>
+                    <strong>Move from insight to action.</strong>
+                  </div>
+                  <button onClick={() => setCurrentView("orders")}>
+                    <Package size={18} />
+                    Review orders
+                  </button>
+                  <button onClick={() => setCurrentView("payments")}>
+                    <CreditCard size={18} />
+                    Audit payments
+                  </button>
+                  <button onClick={() => setCurrentView("wishlist")}>
+                    <Heart size={18} />
+                    Check wishlist demand
+                  </button>
+                </section>
+              </div>
+            </div>
+          )}
+
           {currentView === "checkout" && (
             <div className="checkout-layout">
               <form className="checkout-form" onSubmit={placeOrder}>
@@ -1930,6 +2727,10 @@ export default function Home() {
                 <div className="summary-total">
                   <span>Total</span>
                   <strong>${orderTotal.toFixed(2)}</strong>
+                </div>
+                <div className="summary-delivery">
+                  <span>Estimated delivery</span>
+                  <strong>{estimatedDelivery}</strong>
                 </div>
                 {discount > 0 && (
                   <div className="summary-discount">
@@ -2026,7 +2827,10 @@ export default function Home() {
                       <div className="product-info">
                         <div>
                           <p>{displayCategory(product)}</p>
-                          {product.subcategory && <span>{product.subcategory}</span>}
+                          <span>
+                            {productBrand(product)}
+                            {product.subcategory ? ` / ${product.subcategory}` : ""}
+                          </span>
                           <h3>{product.name}</h3>
                         </div>
                         <div className="rating">
@@ -2042,10 +2846,7 @@ export default function Home() {
                         </div>
                         <div className="product-actions">
                           <button
-                            onClick={() => {
-                              setSelectedProduct(product);
-                              setCurrentView("product");
-                            }}
+                            onClick={() => openProduct(product)}
                           >
                             Details
                           </button>
@@ -2066,10 +2867,41 @@ export default function Home() {
                 Back to shop
               </button>
               <div className="product-page-layout">
-                <div
-                  className="product-page-image"
-                  style={{ backgroundImage: `url(${selectedProduct.image})` }}
-                />
+                <div className="product-gallery">
+                  <button
+                    className={
+                      imageZoomed
+                        ? "product-page-image zoomed"
+                        : "product-page-image"
+                    }
+                    style={{
+                      backgroundImage: `url(${selectedProductImage})`,
+                      backgroundPosition: imageZoomed ? zoomPosition : "center",
+                      backgroundSize: imageZoomed ? "190%" : "cover"
+                    }}
+                    onClick={() => setImageZoomed((zoomed) => !zoomed)}
+                    onMouseMove={handleProductImageMove}
+                    onMouseLeave={() => setZoomPosition("50% 50%")}
+                    aria-label={`Zoom ${selectedProduct.name} image`}
+                  >
+                    <span>{imageZoomed ? "Click to reset" : "Click to zoom"}</span>
+                  </button>
+                  <div className="product-thumbnails" aria-label="Product images">
+                    {selectedProductImages.map((image, index) => (
+                      <button
+                        key={`${selectedProduct.id}-${image}`}
+                        className={selectedImageIndex === index ? "active" : ""}
+                        style={{ backgroundImage: `url(${image})` }}
+                        onClick={() => {
+                          setSelectedImageIndex(index);
+                          setImageZoomed(false);
+                          setZoomPosition("50% 50%");
+                        }}
+                        aria-label={`View image ${index + 1} for ${selectedProduct.name}`}
+                      />
+                    ))}
+                  </div>
+                </div>
                 <div className="product-page-info">
                   <span>
                     {displayCategory(selectedProduct)} / {selectedProduct.subcategory}
@@ -2102,6 +2934,10 @@ export default function Home() {
                     <div>
                       <span>Category</span>
                       <strong>{displayCategory(selectedProduct)}</strong>
+                    </div>
+                    <div>
+                      <span>Brand</span>
+                      <strong>{productBrand(selectedProduct)}</strong>
                     </div>
                     <div>
                       <span>Type</span>
@@ -2241,6 +3077,44 @@ export default function Home() {
                 </div>
               </div>
 
+              {suggestedProducts.length > 0 && (
+                <div className="bundle-section">
+                  <div className="section-heading">
+                    <span>Frequently bought together</span>
+                    <h2>Build a set around {selectedProduct.name}.</h2>
+                  </div>
+                  <div className="bundle-card">
+                    {[selectedProduct, ...suggestedProducts.slice(0, 2)].map(
+                      (product) => (
+                        <article key={product.id}>
+                          <span style={{ backgroundImage: `url(${product.image})` }} />
+                          <strong>{product.name}</strong>
+                          <em>${salePrice(product).toFixed(2)}</em>
+                        </article>
+                      )
+                    )}
+                    <div className="bundle-total">
+                      <span>Bundle total</span>
+                      <strong>
+                        $
+                        {[selectedProduct, ...suggestedProducts.slice(0, 2)]
+                          .reduce((total, product) => total + salePrice(product), 0)
+                          .toFixed(2)}
+                      </strong>
+                      <button
+                        onClick={() =>
+                          [selectedProduct, ...suggestedProducts.slice(0, 2)].forEach(
+                            (product) => addToCart(product)
+                          )
+                        }
+                      >
+                        Add bundle
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="suggestion-section">
                 <div className="section-heading">
                   <span>Suggestions</span>
@@ -2251,7 +3125,12 @@ export default function Home() {
                     <button
                       className="suggestion-card"
                       key={product.id}
-                      onClick={() => setSelectedProduct(product)}
+                      onClick={() => {
+                        setSelectedProduct(product);
+                        setSelectedImageIndex(0);
+                        setImageZoomed(false);
+                        setZoomPosition("50% 50%");
+                      }}
                     >
                       <span
                         style={{ backgroundImage: `url(${product.image})` }}
@@ -2344,6 +3223,62 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="quick-search" aria-labelledby="quick-search-title">
+        <div className="section-heading">
+          <span>Live search</span>
+          <h2 id="quick-search-title">Find products as you type.</h2>
+        </div>
+        <label className="quick-search-box">
+          <Search size={22} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search bags, electronics, beauty, men, women..."
+          />
+          <button
+            type="button"
+            className={isListening ? "voice-active" : ""}
+            onClick={startVoiceSearch}
+            aria-label={isListening ? "Listening for voice search" : "Voice search"}
+          >
+            <Mic size={16} />
+          </button>
+          {query && (
+            <button type="button" onClick={() => setQuery("")}>
+              Clear
+            </button>
+          )}
+        </label>
+        <div className="live-search-meta">
+          <span>
+            {filteredProducts.length}{" "}
+            {filteredProducts.length === 1 ? "product" : "products"} matching
+          </span>
+          <a href="#shop">View results</a>
+        </div>
+      </section>
+
+      <section className="category-cards" aria-labelledby="category-cards-title">
+        <div className="section-heading">
+          <span>Shop by category</span>
+          <h2 id="category-cards-title">Start with the department you need.</h2>
+        </div>
+        <div className="category-card-grid">
+          {categoryCards.map((card) => (
+            <a
+              className="category-card"
+              href="#shop"
+              key={card.label}
+              onClick={() => selectCategoryCard(card)}
+              style={{ backgroundImage: `url(${card.image})` }}
+            >
+              <span>{card.label}</span>
+              <strong>{card.description}</strong>
+            </a>
+          ))}
+        </div>
+      </section>
+
       <section className="flash-sale" aria-labelledby="flash-sale-title">
         <div className="flash-sale-top">
           <div className="section-heading">
@@ -2365,10 +3300,7 @@ export default function Home() {
               <button
                 className="flash-sale-image"
                 style={{ backgroundImage: `url(${product.image})` }}
-                onClick={() => {
-                  setSelectedProduct(product);
-                  setCurrentView("product");
-                }}
+                onClick={() => openProduct(product)}
                 aria-label={`View ${product.name}`}
               >
                 <span>{offerLabel(product)}</span>
@@ -2383,6 +3315,44 @@ export default function Home() {
               </div>
               <button
                 className="flash-sale-button"
+                onClick={() => addToCart(product, selectedQuantity(product.id))}
+              >
+                Add to cart
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="product-showcase" aria-labelledby="trending-title">
+        <div className="section-heading">
+          <span>Trending products</span>
+          <h2 id="trending-title">Popular picks shoppers are buying now.</h2>
+        </div>
+        <div className="product-rail" aria-label="Trending products">
+          {trendingProducts.map((product) => (
+            <article className="rail-product-card" key={product.id}>
+              <button
+                className="rail-product-image"
+                style={{ backgroundImage: `url(${product.image})` }}
+                onClick={() => openProduct(product)}
+                aria-label={`View ${product.name}`}
+              >
+                <span>{purchaseCount(product)} bought</span>
+              </button>
+              <div className="rail-product-info">
+                <p>{displayCategory(product)}</p>
+                <h3>{product.name}</h3>
+                <div>
+                  <strong>${salePrice(product).toFixed(2)}</strong>
+                  <span>
+                    <Star size={14} fill="currentColor" />
+                    {displayRating(product).toFixed(1)}
+                  </span>
+                </div>
+              </div>
+              <button
+                className="rail-product-button"
                 onClick={() => addToCart(product, selectedQuantity(product.id))}
               >
                 Add to cart
@@ -2415,6 +3385,82 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="product-showcase arrivals" aria-labelledby="arrivals-title">
+        <div className="section-heading">
+          <span>New arrivals</span>
+          <h2 id="arrivals-title">Latest additions across fashion, tech, and home.</h2>
+        </div>
+        <div className="product-rail" aria-label="New arrival products">
+          {newArrivalProducts.map((product) => (
+            <article className="rail-product-card" key={product.id}>
+              <button
+                className="rail-product-image"
+                style={{ backgroundImage: `url(${product.image})` }}
+                onClick={() => openProduct(product)}
+                aria-label={`View ${product.name}`}
+              >
+                <span>{product.tag}</span>
+              </button>
+              <div className="rail-product-info">
+                <p>{displayCategory(product)}</p>
+                <h3>{product.name}</h3>
+                <div>
+                  <strong>${salePrice(product).toFixed(2)}</strong>
+                  <span>
+                    <Star size={14} fill="currentColor" />
+                    {displayRating(product).toFixed(1)}
+                  </span>
+                </div>
+              </div>
+              <button
+                className="rail-product-button"
+                onClick={() => addToCart(product, selectedQuantity(product.id))}
+              >
+                Add to cart
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="product-showcase ai-recommendations" aria-labelledby="ai-title">
+        <div className="section-heading">
+          <span>AI recommendations</span>
+          <h2 id="ai-title">Smart picks based on what you browse and save.</h2>
+        </div>
+        <div className="product-rail" aria-label="AI recommended products">
+          {aiRecommendedProducts.map((product) => (
+            <article className="rail-product-card" key={product.id}>
+              <button
+                className="rail-product-image"
+                style={{ backgroundImage: `url(${product.image})` }}
+                onClick={() => openProduct(product)}
+                aria-label={`View ${product.name}`}
+              >
+                <span>Recommended</span>
+              </button>
+              <div className="rail-product-info">
+                <p>{productBrand(product)}</p>
+                <h3>{product.name}</h3>
+                <div>
+                  <strong>${salePrice(product).toFixed(2)}</strong>
+                  <span>
+                    <Star size={14} fill="currentColor" />
+                    {displayRating(product).toFixed(1)}
+                  </span>
+                </div>
+              </div>
+              <button
+                className="rail-product-button"
+                onClick={() => addToCart(product, selectedQuantity(product.id))}
+              >
+                Add to cart
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section className="shop" id="shop">
         <div className="shop-top">
           <div className="section-heading">
@@ -2428,6 +3474,14 @@ export default function Home() {
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search products"
             />
+            <button
+              type="button"
+              className={isListening ? "voice-active" : ""}
+              onClick={startVoiceSearch}
+              aria-label="Voice search"
+            >
+              <Mic size={16} />
+            </button>
           </label>
           <label className="sort-box">
             <span>Sort</span>
@@ -2438,6 +3492,8 @@ export default function Home() {
               <option value="featured">Featured</option>
               <option value="priceLowHigh">Price: Low to high</option>
               <option value="priceHighLow">Price: High to low</option>
+              <option value="popularity">Popularity</option>
+              <option value="newest">Newest</option>
             </select>
           </label>
         </div>
@@ -2463,10 +3519,56 @@ export default function Home() {
               {filteredProducts.length}{" "}
               {filteredProducts.length === 1 ? "product" : "products"} found
             </span>
-            {(query || activeCategory !== "All" || sortOption !== "featured") && (
+            {(query ||
+              activeCategory !== "All" ||
+              sortOption !== "featured" ||
+              priceFilter !== "all" ||
+              ratingFilter !== "all" ||
+              brandFilter !== "All") && (
               <button onClick={clearFilters}>Clear filters</button>
             )}
           </div>
+        </div>
+
+        <div className="advanced-filters" aria-label="Product filters">
+          <label>
+            <span>Price</span>
+            <select
+              value={priceFilter}
+              onChange={(event) => setPriceFilter(event.target.value as PriceFilter)}
+            >
+              <option value="all">All prices</option>
+              <option value="under25">Under $25</option>
+              <option value="25to50">$25 to $50</option>
+              <option value="50to100">$50 to $100</option>
+              <option value="over100">Over $100</option>
+            </select>
+          </label>
+          <label>
+            <span>Rating</span>
+            <select
+              value={ratingFilter}
+              onChange={(event) => setRatingFilter(event.target.value as RatingFilter)}
+            >
+              <option value="all">All ratings</option>
+              <option value="4.5">4.5 stars & up</option>
+              <option value="4.7">4.7 stars & up</option>
+              <option value="4.8">4.8 stars & up</option>
+            </select>
+          </label>
+          <label>
+            <span>Brand</span>
+            <select
+              value={brandFilter}
+              onChange={(event) => setBrandFilter(event.target.value)}
+            >
+              {brands.map((brand) => (
+                <option value={brand} key={brand}>
+                  {brand}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         {subcategoriesByCategory[activeCategory] && (
@@ -2487,7 +3589,16 @@ export default function Home() {
         )}
 
         <div className="product-grid">
-          {filteredProducts.length === 0 && (
+          {isLoadingProducts &&
+            [1, 2, 3, 4, 5, 6].map((item) => (
+              <article className="product-card skeleton-card" key={item}>
+                <span />
+                <div />
+                <div />
+              </article>
+            ))}
+
+          {!isLoadingProducts && filteredProducts.length === 0 && (
             <div className="no-results">
               <Search size={26} />
               <strong>No products found</strong>
@@ -2496,7 +3607,7 @@ export default function Home() {
             </div>
           )}
 
-          {filteredProducts.map((product) => (
+          {!isLoadingProducts && filteredProducts.map((product) => (
             <article className="product-card" key={product.id}>
               <div
                 className="product-image"
@@ -2522,7 +3633,10 @@ export default function Home() {
               <div className="product-info">
                 <div>
                   <p>{displayCategory(product)}</p>
-                  {product.subcategory && <span>{product.subcategory}</span>}
+                  <span>
+                    {productBrand(product)}
+                    {product.subcategory ? ` / ${product.subcategory}` : ""}
+                  </span>
                   <h3>{product.name}</h3>
                 </div>
                 <div className="rating">
@@ -2553,12 +3667,16 @@ export default function Home() {
                 </label>
                 <div className="product-actions">
                   <button
-                    onClick={() => {
-                      setSelectedProduct(product);
-                      setCurrentView("product");
-                    }}
+                    onClick={() => openProduct(product)}
                   >
                     Details
+                  </button>
+                  <button
+                    className={compareIds.includes(product.id) ? "compare-active" : ""}
+                    onClick={() => toggleCompare(product.id)}
+                  >
+                    <GitCompareArrows size={15} />
+                    Compare
                   </button>
                   <button onClick={() => addToCart(product, selectedQuantity(product.id))}>
                     Add to cart
@@ -2569,6 +3687,70 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      {compareProducts.length > 0 && (
+        <section className="compare-section" aria-labelledby="compare-title">
+          <div className="section-heading">
+            <span>Compare products</span>
+            <h2 id="compare-title">Review selected products side by side.</h2>
+          </div>
+          <div className="compare-grid">
+            {compareProducts.map((product) => (
+              <article className="compare-card" key={product.id}>
+                <button
+                  className="compare-remove"
+                  onClick={() => toggleCompare(product.id)}
+                  aria-label={`Remove ${product.name} from compare`}
+                >
+                  <X size={16} />
+                </button>
+                <span style={{ backgroundImage: `url(${product.image})` }} />
+                <h3>{product.name}</h3>
+                <p>{productBrand(product)} / {displayCategory(product)}</p>
+                <strong>${salePrice(product).toFixed(2)}</strong>
+                <em>
+                  <Star size={14} fill="currentColor" />
+                  {displayRating(product).toFixed(1)} rating
+                </em>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {recentlyViewedProducts.length > 0 && (
+        <section className="product-showcase" aria-labelledby="recent-title">
+          <div className="section-heading">
+            <span>Recently viewed</span>
+            <h2 id="recent-title">Continue from products you opened.</h2>
+          </div>
+          <div className="product-rail" aria-label="Recently viewed products">
+            {recentlyViewedProducts.map((product) => (
+              <article className="rail-product-card" key={product.id}>
+                <button
+                  className="rail-product-image"
+                  style={{ backgroundImage: `url(${product.image})` }}
+                  onClick={() => openProduct(product)}
+                  aria-label={`View ${product.name}`}
+                >
+                  <span>Viewed</span>
+                </button>
+                <div className="rail-product-info">
+                  <p>{productBrand(product)}</p>
+                  <h3>{product.name}</h3>
+                  <div>
+                    <strong>${salePrice(product).toFixed(2)}</strong>
+                    <span>
+                      <Star size={14} fill="currentColor" />
+                      {displayRating(product).toFixed(1)}
+                    </span>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="offer-band" id="offers">
         <div>
@@ -2598,18 +3780,93 @@ export default function Home() {
       </section>
 
       <footer id="support">
-        <div>
+        <div className="footer-brand">
           <strong>Sneha Carries</strong>
           <p>Accessories, gifts, and everyday products for modern routines.</p>
+          <div className="social-links" aria-label="Social media">
+            <a href="#" aria-label="Instagram">IG</a>
+            <a href="#" aria-label="Facebook">f</a>
+            <a href="#" aria-label="Twitter">X</a>
+          </div>
         </div>
-        <div className="footer-links">
-          <a href="#">Shipping</a>
-          <a href="#">Returns</a>
-          <a href="#">Contact</a>
+        <div className="footer-columns">
+          <div>
+            <h3>About Us</h3>
+            <p>Curated products for carrying, styling, gifting, tech, and home use.</p>
+          </div>
+          <div>
+            <h3>Contact</h3>
+            <a href="mailto:support@snehacarries.example">support@snehacarries.example</a>
+            <a href="tel:+15550101488">+1 555 010 1488</a>
+          </div>
+          <div>
+            <h3>FAQ</h3>
+            <a href="#shop">Shipping and delivery</a>
+            <a href="#offers">Coupons and offers</a>
+          </div>
+          <div>
+            <h3>Policies</h3>
+            <a href="#">Privacy Policy</a>
+            <a href="#">Terms & Conditions</a>
+          </div>
         </div>
       </footer>
         </>
       )}
+
+      <div className="toast-stack" aria-live="polite">
+        {toasts.map((toast) => (
+          <div className="toast" key={toast.id}>
+            {toast.message}
+          </div>
+        ))}
+      </div>
+
+      <button
+        className="back-to-top"
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        aria-label="Back to top"
+      >
+        <ChevronUp size={20} />
+      </button>
+
+      <div className={chatOpen ? "support-chat open" : "support-chat"}>
+        <button
+          className="chat-launcher"
+          onClick={() => setChatOpen((open) => !open)}
+          aria-label="Customer support chat"
+        >
+          {chatOpen ? <X size={20} /> : <MessageCircle size={20} />}
+        </button>
+        {chatOpen && (
+          <section className="chat-panel" aria-label="Customer support chatbot">
+            <div className="chat-header">
+              <Bot size={20} />
+              <div>
+                <strong>Sneha Support</strong>
+                <span>Online assistant</span>
+              </div>
+            </div>
+            <div className="chat-messages">
+              {chatMessages.map((message, index) => (
+                <p className={message.sender} key={`${message.sender}-${index}`}>
+                  {message.text}
+                </p>
+              ))}
+            </div>
+            <form className="chat-input" onSubmit={sendChatMessage}>
+              <input
+                value={chatInput}
+                onChange={(event) => setChatInput(event.target.value)}
+                placeholder="Ask about delivery, coupons, returns..."
+              />
+              <button type="submit" aria-label="Send message">
+                <Send size={17} />
+              </button>
+            </form>
+          </section>
+        )}
+      </div>
 
       <aside className={cartOpen ? "cart-drawer open" : "cart-drawer"}>
         <div className="cart-header">
@@ -2677,6 +3934,10 @@ export default function Home() {
             <div>
               <span>Shipping</span>
               <strong>{shipping === 0 ? "Free" : `$${shipping.toFixed(2)}`}</strong>
+            </div>
+            <div>
+              <span>Estimated delivery</span>
+              <strong>{estimatedDelivery}</strong>
             </div>
             <div>
               <span>Estimated tax</span>
