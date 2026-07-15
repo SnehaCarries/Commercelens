@@ -29,6 +29,15 @@ import {
   User,
   X
 } from "lucide-react";
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut,
+  signInWithEmailAndPassword,
+  updateProfile
+} from "firebase/auth";
+import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { auth, db, enableAnalytics } from "../lib/firebase";
 
 type Product = {
   id: number;
@@ -101,6 +110,22 @@ type Order = {
   status: string;
   total: number;
   items: CartItem[];
+};
+
+type UserStoreData = {
+  cart?: CartItem[];
+  wishlist?: number[];
+  orders?: Order[];
+  orderSummary?: {
+    subtotal: number;
+    discount: number;
+    shipping: number;
+    tax: number;
+    total: number;
+    couponCode: string;
+    estimatedDelivery: string;
+    itemCount: number;
+  };
 };
 
 const products: Product[] = [
@@ -1666,6 +1691,9 @@ export default function Home() {
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [authName, setAuthName] = useState("Sneha Customer");
   const [authEmail, setAuthEmail] = useState("customer@example.com");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const [profileName, setProfileName] = useState("Sneha Customer");
   const [profileEmail, setProfileEmail] = useState("customer@example.com");
   const [profilePhone, setProfilePhone] = useState("+1 555 010 1488");
@@ -1707,6 +1735,55 @@ export default function Home() {
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [themeAnimating, setThemeAnimating] = useState(false);
   const [flashSaleSecondsLeft, setFlashSaleSecondsLeft] = useState(8 * 60 * 60);
+
+  useEffect(() => {
+    enableAnalytics();
+  }, []);
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setCustomer(null);
+        setCart([]);
+        setWishlist([]);
+        return;
+      }
+
+      const nextCustomer = {
+        name: user.displayName || "Sneha Customer",
+        email: user.email || "customer@example.com",
+        phone: "+1 555 010 1488",
+        address: "42 Market Street",
+        city: "San Francisco, CA"
+      };
+      setCustomer(nextCustomer);
+      setProfileName(nextCustomer.name);
+      setProfileEmail(nextCustomer.email);
+      setAuthName(nextCustomer.name);
+      setAuthEmail(nextCustomer.email);
+
+      try {
+        const storeSnapshot = await getDoc(doc(db, "users", user.uid));
+        if (!storeSnapshot.exists()) {
+          return;
+        }
+
+        const storeData = storeSnapshot.data() as UserStoreData;
+        if (Array.isArray(storeData.cart)) {
+          setCart(storeData.cart);
+        }
+        if (Array.isArray(storeData.wishlist)) {
+          setWishlist(storeData.wishlist);
+        }
+        if (Array.isArray(storeData.orders)) {
+          setOrders(storeData.orders);
+        }
+      } catch (error) {
+        console.error("Failed to load Firestore user store", error);
+        showToast("Could not load Firestore data");
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const savedTheme = window.localStorage.getItem("sneha-theme");
@@ -1991,18 +2068,204 @@ export default function Home() {
     }, 2600);
   }
 
+  async function saveUserStore(data: UserStoreData) {
+    const user = auth.currentUser;
+    if (!user) {
+      return false;
+    }
+
+    try {
+      await setDoc(
+        doc(db, "users", user.uid),
+        {
+          ...data,
+          email: user.email,
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+      return true;
+    } catch (error) {
+      console.error("Failed to save Firestore user store", error);
+      showToast("Could not sync with Firestore");
+      return false;
+    }
+  }
+
+  async function saveCartItem(item: CartItem) {
+    const user = auth.currentUser;
+    if (!user) {
+      return;
+    }
+
+    try {
+      await setDoc(
+        doc(db, "users", user.uid, "cart", String(item.id)),
+        {
+          ...item,
+          userId: user.uid,
+          userEmail: user.email,
+          salePrice: Number(salePrice(item).toFixed(2)),
+          lineTotal: Number((salePrice(item) * item.quantity).toFixed(2)),
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+      await setDoc(
+        doc(db, "cart", `${user.uid}_${item.id}`),
+        {
+          ...item,
+          userId: user.uid,
+          userEmail: user.email,
+          salePrice: Number(salePrice(item).toFixed(2)),
+          lineTotal: Number((salePrice(item) * item.quantity).toFixed(2)),
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error("Failed to save cart item", error);
+      showToast("Could not sync cart item");
+    }
+  }
+
+  async function removeCartItemDocument(id: number) {
+    const user = auth.currentUser;
+    if (!user) {
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "cart", String(id)));
+      await deleteDoc(doc(db, "cart", `${user.uid}_${id}`));
+    } catch (error) {
+      console.error("Failed to remove cart item", error);
+      showToast("Could not sync cart item");
+    }
+  }
+
+  async function saveWishlistItem(product: Product) {
+    const user = auth.currentUser;
+    if (!user) {
+      return;
+    }
+
+    try {
+      await setDoc(
+        doc(db, "users", user.uid, "wishlist", String(product.id)),
+        {
+          ...product,
+          userId: user.uid,
+          userEmail: user.email,
+          salePrice: Number(salePrice(product).toFixed(2)),
+          savedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+      await setDoc(
+        doc(db, "wishlist", `${user.uid}_${product.id}`),
+        {
+          ...product,
+          userId: user.uid,
+          userEmail: user.email,
+          salePrice: Number(salePrice(product).toFixed(2)),
+          savedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error("Failed to save wishlist item", error);
+      showToast("Could not sync wishlist item");
+    }
+  }
+
+  async function removeWishlistItemDocument(id: number) {
+    const user = auth.currentUser;
+    if (!user) {
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "wishlist", String(id)));
+      await deleteDoc(doc(db, "wishlist", `${user.uid}_${id}`));
+    } catch (error) {
+      console.error("Failed to remove wishlist item", error);
+      showToast("Could not sync wishlist item");
+    }
+  }
+
+  async function saveOrderDocument(order: Order, orderSummary: UserStoreData["orderSummary"]) {
+    const user = auth.currentUser;
+    if (!user) {
+      return false;
+    }
+
+    const orderData = {
+      ...order,
+      customer: {
+        id: user.uid,
+        email: user.email,
+        name: customer?.name ?? user.displayName ?? "Sneha Customer",
+        phone: customer?.phone ?? profilePhone,
+        address: customer?.address ?? profileAddress,
+        city: customer?.city ?? profileCity
+      },
+      userId: user.uid,
+      userEmail: user.email,
+      orderSummary,
+      placedAt: serverTimestamp()
+    };
+
+    try {
+      await setDoc(doc(db, "users", user.uid, "orders", order.id), orderData);
+      await setDoc(doc(db, "orders", order.id), orderData);
+      await setDoc(doc(db, "customerOrders", order.id), orderData);
+      return true;
+    } catch (error) {
+      console.error("Failed to save order", error);
+      showToast("Could not sync order");
+      return false;
+    }
+  }
+
+  function requireSignedInForStore(action: string) {
+    if (auth.currentUser) {
+      return true;
+    }
+
+    showToast(`Sign in to ${action}`);
+    setCurrentView("login");
+    return false;
+  }
+
   function addToCart(product: Product, quantity = 1) {
+    if (!requireSignedInForStore("add items to cart")) {
+      return;
+    }
+
     const safeQuantity = Math.max(1, quantity);
     setCart((current) => {
       const existing = current.find((item) => item.id === product.id);
       if (existing) {
-        return current.map((item) =>
+        const nextCart = current.map((item) =>
           item.id === product.id
             ? { ...item, quantity: item.quantity + safeQuantity }
             : item
         );
+        const updatedItem = nextCart.find((item) => item.id === product.id);
+        void saveUserStore({ cart: nextCart });
+        if (updatedItem) {
+          void saveCartItem(updatedItem);
+        }
+        return nextCart;
       }
-      return [...current, { ...product, quantity: safeQuantity }];
+      const nextCart = [...current, { ...product, quantity: safeQuantity }];
+      const addedItem = nextCart.find((item) => item.id === product.id);
+      void saveUserStore({ cart: nextCart });
+      if (addedItem) {
+        void saveCartItem(addedItem);
+      }
+      return nextCart;
     });
     setCartOpen(true);
     showToast(`${product.name} added to cart`);
@@ -2020,12 +2283,24 @@ export default function Home() {
   }
 
   function toggleWishlist(productId: number) {
+    if (!requireSignedInForStore("use your wishlist")) {
+      return;
+    }
+
     const product = products.find((item) => item.id === productId);
-    setWishlist((current) =>
-      current.includes(productId)
+    setWishlist((current) => {
+      const isSaved = current.includes(productId);
+      const nextWishlist = current.includes(productId)
         ? current.filter((id) => id !== productId)
-        : [...current, productId]
-    );
+        : [...current, productId];
+      void saveUserStore({ wishlist: nextWishlist });
+      if (product) {
+        void (isSaved
+          ? removeWishlistItemDocument(productId)
+          : saveWishlistItem(product));
+      }
+      return nextWishlist;
+    });
     if (product) {
       showToast(
         wishlist.includes(productId)
@@ -2077,19 +2352,28 @@ export default function Home() {
   }
 
   function updateQuantity(id: number, amount: number) {
-    setCart((current) =>
-      current
+    setCart((current) => {
+      const nextCart = current
         .map((item) =>
           item.id === id
             ? { ...item, quantity: Math.max(0, item.quantity + amount) }
             : item
         )
-        .filter((item) => item.quantity > 0)
-    );
+        .filter((item) => item.quantity > 0);
+      const updatedItem = nextCart.find((item) => item.id === id);
+      void saveUserStore({ cart: nextCart });
+      void (updatedItem ? saveCartItem(updatedItem) : removeCartItemDocument(id));
+      return nextCart;
+    });
   }
 
   function removeFromCart(id: number) {
-    setCart((current) => current.filter((item) => item.id !== id));
+    setCart((current) => {
+      const nextCart = current.filter((item) => item.id !== id);
+      void saveUserStore({ cart: nextCart });
+      void removeCartItemDocument(id);
+      return nextCart;
+    });
   }
 
   function clearFilters() {
@@ -2228,19 +2512,59 @@ export default function Home() {
     window.setTimeout(() => setThemeAnimating(false), 620);
   }
 
-  function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nextCustomer = {
-      name: authName.trim() || "Sneha Customer",
-      email: authEmail.trim() || "customer@example.com",
-      phone: profilePhone,
-      address: profileAddress,
-      city: profileCity
-    };
-    setCustomer(nextCustomer);
-    setProfileName(nextCustomer.name);
-    setProfileEmail(nextCustomer.email);
-    setCurrentView("profile");
+    setAuthError("");
+
+    const email = authEmail.trim();
+    const password = authPassword.trim();
+    if (!email || !password) {
+      setAuthError("Enter your email and password.");
+      return;
+    }
+
+    setAuthLoading(true);
+    try {
+      const credential =
+        authMode === "signup"
+          ? await createUserWithEmailAndPassword(auth, email, password)
+          : await signInWithEmailAndPassword(auth, email, password);
+
+      if (authMode === "signup" && authName.trim()) {
+        await updateProfile(credential.user, {
+          displayName: authName.trim()
+        });
+      }
+
+      const displayName =
+        authMode === "signup"
+          ? authName.trim() || "Sneha Customer"
+          : credential.user.displayName || authName.trim() || "Sneha Customer";
+
+      await credential.user.reload();
+
+      const nextCustomer = {
+        name: displayName,
+        email: credential.user.email || email,
+        phone: profilePhone,
+        address: profileAddress,
+        city: profileCity
+      };
+      setCustomer(nextCustomer);
+      setProfileName(nextCustomer.name);
+      setProfileEmail(nextCustomer.email);
+      setAuthPassword("");
+      setCurrentView("shop");
+      showToast(authMode === "login" ? "Signed in" : "Account created");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message.replace("Firebase: ", "").replace(/\s*\(auth\/.*\)\.?$/, ".")
+          : "Authentication failed.";
+      setAuthError(message);
+    } finally {
+      setAuthLoading(false);
+    }
   }
 
   function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
@@ -2258,8 +2582,19 @@ export default function Home() {
     showToast("Profile updated");
   }
 
-  function placeOrder(event: FormEvent<HTMLFormElement>) {
+  async function handleSignOut() {
+    await signOut(auth);
+    setAuthPassword("");
+    setCurrentView("shop");
+    showToast("Signed out");
+  }
+
+  async function placeOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!requireSignedInForStore("place orders")) {
+      return;
+    }
+
     if (cart.length === 0) {
       return;
     }
@@ -2272,8 +2607,36 @@ export default function Home() {
       items: cart
     };
 
-    setOrders((current) => [newOrder, ...current]);
+    const nextOrders = [newOrder, ...orders];
+    const orderSummary = {
+      subtotal: Number(subtotal.toFixed(2)),
+      discount: Number(discount.toFixed(2)),
+      shipping: Number(shipping.toFixed(2)),
+      tax: Number(tax.toFixed(2)),
+      total: Number(orderTotal.toFixed(2)),
+      couponCode: normalizedCoupon,
+      estimatedDelivery,
+      itemCount: cartCount
+    };
+
+    const orderSaved = await saveOrderDocument(newOrder, orderSummary);
+    if (!orderSaved) {
+      return;
+    }
+
+    const storeSaved = await saveUserStore({
+      cart: [],
+      orders: nextOrders,
+      orderSummary
+    });
+    if (!storeSaved) {
+      return;
+    }
+
+    setOrders(nextOrders);
     setCart([]);
+    await Promise.all(cart.map((item) => removeCartItemDocument(item.id)));
+    showToast("Order saved to Firebase");
     setCurrentView("orders");
   }
 
@@ -2399,14 +2762,27 @@ export default function Home() {
                     value={authEmail}
                     onChange={(event) => setAuthEmail(event.target.value)}
                     placeholder="you@example.com"
+                    required
                   />
                 </label>
                 <label>
                   Password
-                  <input type="password" placeholder="Enter password" />
+                  <input
+                    type="password"
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                    placeholder="Enter password"
+                    minLength={6}
+                    required
+                  />
                 </label>
-                <button type="submit" className="wide-button">
-                  {authMode === "login" ? "Sign in" : "Create account"}
+                {authError && <p className="form-error">{authError}</p>}
+                <button type="submit" className="wide-button" disabled={authLoading}>
+                  {authLoading
+                    ? "Please wait..."
+                    : authMode === "login"
+                      ? "Sign in"
+                      : "Create account"}
                 </button>
               </form>
             </div>
@@ -2516,6 +2892,10 @@ export default function Home() {
                   <button onClick={() => setCurrentView("payments")}>
                     <CreditCard size={18} />
                     Payment methods
+                  </button>
+                  <button className="sign-out-button" onClick={handleSignOut}>
+                    <User size={18} />
+                    Sign out
                   </button>
                   <div className="profile-delivery">
                     <span>Default delivery</span>

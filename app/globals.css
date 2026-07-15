@@ -1696,6 +1696,11 @@ button {
   font-weight: 900;
 }
 
+.profile-summary .sign-out-button {
+  color: #b3261e;
+  border-color: rgba(179, 38, 30, 0.35);
+}
+
 .profile-delivery {
   display: grid;
   gap: 6px;
@@ -2020,6 +2025,14 @@ button {
 
 .wide-button {
   width: 100%;
+}
+
+.form-error {
+  margin: -4px 0 16px;
+  color: #b3261e;
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1.4;
 }
 
 .form-grid {
