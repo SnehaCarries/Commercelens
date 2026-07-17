@@ -1,26 +1,27 @@
-# Commercelens
+# Commercelens – E-commerce Sales Analysis Dashboard
 
-Commercelens is a Next.js ecommerce storefront for Sneha Carries. It includes product browsing, search, filters, cart, wishlist, checkout, account authentication, and Firebase-backed customer shopping data.
-
-## Features
-
-- Product catalog with category, subcategory, brand, price, rating, and search filters
-- Product details page with image gallery, quantity selection, ratings, and recommendations
-- Cart drawer with quantity controls, coupons, tax, shipping, and order totals
-- Wishlist with saved product cards and add-to-cart actions
-- Firebase Authentication for email/password sign up, sign in, and sign out
-- Cloud Firestore sync for cart, wishlist, and customer orders
-- Customer profile, order history, payments view, and store dashboard
-- Light/dark theme toggle and responsive layout
+CommerceLens is an AI-powered e-commerce sales analytics platform designed to help businesses transform raw sales data into meaningful insights. The dashboard enables users to monitor business performance, analyze sales trends, and make data-driven decisions through interactive visualizations and AI-generated recommendations.
 
 ## Tech Stack
 
-- Next.js App Router
-- React
-- TypeScript
-- Firebase Authentication
-- Cloud Firestore
-- Lucide React icons
+Frontend: Next.js, React.js
+Styling: Tailwind CSS
+Backend: Firebase
+Database: Firestore
+Authentication: Firebase Authentication
+Charts: Recharts / Chart.js
+Language: JavaScript
+
+## Features
+
+- Interactive analytics dashboard
+- Revenue, profit, and sales tracking
+- Product performance analysis
+- Order and customer insights
+- Dynamic charts and visualizations
+- AI-powered business recommendations
+- Responsive user interface
+- Secure Firebase backend integration
 
 ## Getting Started
 
@@ -75,7 +76,7 @@ In Firebase Console:
 1. Enable Authentication.
 2. Enable the Email/Password sign-in provider.
 3. Create a Cloud Firestore database.
-4. Publish Firestore rules that allow authenticated users to manage their own cart, wishlist, and orders.
+4. Publish Firestore rules that protect user data
 
 ## Firestore Data
 
@@ -176,8 +177,6 @@ public/
   homepage-banner.mp4
 ```
 
-## Notes
+## Overview
 
-- `.env.local` is ignored by git.
-- Firebase web config values are public client configuration, but they should still be kept out of source so each environment can use its own project.
-- Cart, wishlist, and order writes require a signed-in Firebase user.
+The platform collects and organizes sales-related information such as revenue, orders, profit, customer activity, and product performance into a single dashboard.
