@@ -1,4 +1,4 @@
-# Commercelens – E-commerce Sales Analysis Dashboard
+# Commercelens
 
 CommerceLens is an AI-powered e-commerce sales analytics platform designed to help businesses transform raw sales data into meaningful insights. The dashboard enables users to monitor business performance, analyze sales trends, and make data-driven decisions through interactive visualizations and AI-generated recommendations.
 
