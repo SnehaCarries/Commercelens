@@ -4,13 +4,13 @@ CommerceLens is an AI-powered e-commerce sales analytics platform designed to he
 
 ## Tech Stack
 
-**Frontend:** Next.js, React.js
-**Styling:** Tailwind CSS
-**Backend:** Firebase
-**Database:** Firestore
-**Authentication:** Firebase Authentication
-**Charts:** Recharts / Chart.js
-**Language:** JavaScript
+- **Frontend:** Next.js, React.js
+- **Styling:** Tailwind CSS
+- **Backend:** Firebase
+- **Database:** Firestore
+- **Authentication:** Firebase Authentication
+- **Charts:** Recharts / Chart.js
+- **Language:** JavaScript
 
 ## Features
 
