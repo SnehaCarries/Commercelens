@@ -37,7 +37,7 @@ import {
   updateProfile
 } from "firebase/auth";
 import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
-import { auth, db, enableAnalytics } from "../lib/firebase";
+import { auth, db } from "../lib/firebase";
 
 type Product = {
   id: number;
@@ -1736,9 +1736,6 @@ export default function Home() {
   const [themeAnimating, setThemeAnimating] = useState(false);
   const [flashSaleSecondsLeft, setFlashSaleSecondsLeft] = useState(8 * 60 * 60);
 
-  useEffect(() => {
-    enableAnalytics();
-  }, []);
 
   useEffect(() => {
     return onAuthStateChanged(auth, async (user) => {
