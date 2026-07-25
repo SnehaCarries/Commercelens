@@ -36,7 +36,18 @@ import {
   signInWithEmailAndPassword,
   updateProfile
 } from "firebase/auth";
-import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query as firestoreQuery,
+  serverTimestamp,
+  setDoc
+} from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 
 type Product = {
@@ -110,6 +121,17 @@ type Order = {
   status: string;
   total: number;
   items: CartItem[];
+};
+
+type RecentOrder = {
+  id: string;
+  customer: string;
+  product: string;
+  quantity: number;
+  total: number;
+  status: string;
+  date: Date | null;
+  dateLabel: string;
 };
 
 type UserStoreData = {
@@ -1650,6 +1672,56 @@ function deliveryEstimate(date = new Date()) {
   })}`;
 }
 
+function orderDate(value: unknown): Date | null {
+  if (value && typeof value === "object") {
+    const toMillis = (value as { toMillis?: () => unknown }).toMillis;
+    if (typeof toMillis === "function") {
+      const milliseconds = Number(toMillis.call(value));
+      return Number.isFinite(milliseconds) ? new Date(milliseconds) : null;
+    }
+  }
+
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  return null;
+}
+
+function formatOrderDate(date: Date | null, fallback = "-") {
+  if (!date || Number.isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  });
+}
+
+function orderText(value: unknown, fallback = "-") {
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return fallback;
+}
+
+function orderNumber(value: unknown, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
 export default function Home() {
   const [currentView, setCurrentView] = useState<AppView>("shop");
   const [activeCategory, setActiveCategory] = useState("All");
@@ -1712,6 +1784,9 @@ export default function Home() {
       ]
     }
   ]);
+  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
+  const [recentOrdersLoading, setRecentOrdersLoading] = useState(true);
+  const [recentOrdersError, setRecentOrdersError] = useState("");
   const [paymentMethods] = useState<PaymentMethod[]>([
     {
       id: 1,
@@ -1780,6 +1855,61 @@ export default function Home() {
         showToast("Could not load Firestore data");
       }
     });
+  }, []);
+
+  useEffect(() => {
+    setRecentOrdersLoading(true);
+    setRecentOrdersError("");
+    const recentOrdersQuery = firestoreQuery(
+      collection(db, "orders"),
+      orderBy("date", "desc"),
+      limit(10)
+    );
+
+    return onSnapshot(
+      recentOrdersQuery,
+      (snapshot) => {
+        const nextOrders = snapshot.docs.map((snapshotDocument) => {
+          const data = snapshotDocument.data() as Record<string, unknown>;
+          const items = Array.isArray(data.items) ? data.items : [];
+          const productNames = items
+            .map((item) =>
+              item && typeof item === "object" && "name" in item
+                ? String((item as { name?: unknown }).name ?? "Product")
+                : "Product"
+            )
+            .filter(Boolean);
+          const quantity = items.reduce((total, item) => {
+            const itemQuantity =
+              item && typeof item === "object" && "quantity" in item
+                ? Number((item as { quantity?: unknown }).quantity)
+                : 0;
+            return total + (Number.isFinite(itemQuantity) ? itemQuantity : 0);
+          }, 0);
+          const customerData = data.customer as { name?: unknown } | undefined;
+          const date = orderDate(data.date) ?? orderDate(data.placedAt);
+
+          return {
+            id: String(data.orderId ?? data.id ?? snapshotDocument.id),
+            customer: String(data.customerName ?? customerData?.name ?? data.userEmail ?? "Guest customer"),
+            product: String(data.productName ?? (productNames.join(", ") || "—")),
+            quantity: Number(data.quantity ?? quantity),
+            total: Number(data.price ?? data.total ?? (data.orderSummary as { total?: unknown } | undefined)?.total ?? 0),
+            status: String(data.status ?? "Processing"),
+            date,
+            dateLabel: formatOrderDate(date, typeof data.date === "string" ? data.date : "Pending")
+          };
+        });
+
+        setRecentOrders(nextOrders);
+        setRecentOrdersLoading(false);
+      },
+      (error) => {
+        console.error("Failed to load recent orders", error);
+        setRecentOrdersError("Recent orders are unavailable.");
+        setRecentOrdersLoading(false);
+      }
+    );
   }, []);
 
   useEffect(() => {
@@ -2216,7 +2346,6 @@ export default function Home() {
     try {
       await setDoc(doc(db, "users", user.uid, "orders", order.id), orderData);
       await setDoc(doc(db, "orders", order.id), orderData);
-      await setDoc(doc(db, "customerOrders", order.id), orderData);
       return true;
     } catch (error) {
       console.error("Failed to save order", error);
@@ -3044,6 +3173,56 @@ export default function Home() {
                   </button>
                 </section>
               </div>
+
+              <section className="dashboard-panel recent-orders-panel" aria-labelledby="recent-orders-title">
+                <div>
+                  <span>Order activity</span>
+                  <strong id="recent-orders-title">Recent orders</strong>
+                </div>
+                <div className="recent-orders-table-wrap">
+                  <table className="recent-orders-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Order ID</th>
+                        <th scope="col">Customer</th>
+                        <th scope="col">Product</th>
+                        <th scope="col">Quantity</th>
+                        <th scope="col">Total Price</th>
+                        <th scope="col">Order Status</th>
+                        <th scope="col">Order Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recentOrdersLoading && (
+                        <tr>
+                          <td colSpan={7} className="recent-orders-message">Loading recent orders…</td>
+                        </tr>
+                      )}
+                      {!recentOrdersLoading && recentOrdersError && (
+                        <tr>
+                          <td colSpan={7} className="recent-orders-message">{recentOrdersError}</td>
+                        </tr>
+                      )}
+                      {!recentOrdersLoading && !recentOrdersError && recentOrders.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="recent-orders-message">No orders have been placed yet.</td>
+                        </tr>
+                      )}
+                      {recentOrders.map((order) => (
+                        <tr key={order.id}>
+                          <td data-label="Order ID">{order.id}</td>
+                          <td data-label="Customer">{order.customer}</td>
+                          <td data-label="Product" className="recent-order-product">{order.product}</td>
+                          <td data-label="Quantity">{order.quantity}</td>
+                          <td data-label="Total Price">${order.total.toFixed(2)}</td>
+                          <td data-label="Order Status"><span className="order-status">{order.status}</span></td>
+                          <td data-label="Order Date">{order.dateLabel}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             </div>
           )}
 

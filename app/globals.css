@@ -1811,6 +1811,75 @@ button {
   font-size: 1.35rem;
 }
 
+.recent-orders-panel {
+  margin-top: 18px;
+}
+
+.recent-orders-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.recent-orders-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.recent-orders-table th,
+.recent-orders-table td {
+  padding: 14px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.recent-orders-table th {
+  color: var(--muted);
+  background: var(--bg);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.recent-orders-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.recent-orders-table tbody tr:hover {
+  background: color-mix(in srgb, var(--sage) 8%, transparent);
+}
+
+.recent-order-product {
+  min-width: 190px;
+  max-width: 300px;
+}
+
+.order-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  color: var(--sage);
+  background: color-mix(in srgb, var(--sage) 13%, transparent);
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.recent-orders-message {
+  padding: 28px !important;
+  color: var(--muted);
+  text-align: center !important;
+  font-weight: 800;
+}
+
 .bar-chart {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));

@@ -97,7 +97,6 @@ Top-level paths:
 cart/{uid_productId}
 wishlist/{uid_productId}
 orders/{orderId}
-customerOrders/{orderId}
 ```
 
 Each order includes customer details, user ID, user email, order items, totals, delivery estimate, and a Firestore timestamp.
@@ -155,11 +154,6 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    match /customerOrders/{orderId} {
-      allow create, read: if signedIn()
-        && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if false;
-    }
   }
 }
 ```
