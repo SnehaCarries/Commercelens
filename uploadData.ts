@@ -1,4 +1,4 @@
-import { db } from "./lib/firebase.ts";
+import { db } from "./lib/firebase";
 import { collection, addDoc } from "firebase/firestore";
 
 async function uploadProducts() {
